@@ -7,18 +7,13 @@ const { Kafka } = require("kafkajs");
 
 // --------- ENV VARS ----------
 const PORT = process.env.PORT || 8080;
-let broker = process.env.KAFKA_BROKER; // e.g. "kafka:29092"
-const KAFKA_TOPIC = process.env.KAFKA_TOPIC || "KUTYAKAJA";
+const KAFKA_BROKER = process.env.KAFKA_BROKER; // e.g. "pkc-xxxxxx.eu-central-1.aws.confluent.cloud:9092"
+const KAFKA_TOPIC = process.env.KAFKA_TOPIC || "demo-stream";
 
-if (!broker) {
+if (!KAFKA_BROKER) {
   console.error("Missing KAFKA_BROKER env var");
   process.exit(1);
 }
-
-// strip things like PLAINTEXT:// if present
-broker = broker.trim();
-
-console.log("Using broker:", broker, "topic:", KAFKA_TOPIC);
 
 // --------- EXPRESS + HTTP SERVER ----------
 const app = express();
@@ -44,10 +39,27 @@ wss.on("connection", (socket) => {
   socket.on("close", () => console.log("Client disconnected"));
 });
 
-// --------- KAFKA SETUP ----------
+// --------- KAFKA SETUP (Confluent Cloud) ----------
+
+const saslUsername = process.env.KAFKA_SASL_USERNAME;
+const saslPassword = process.env.KAFKA_SASL_PASSWORD;
+
+if (!saslUsername || !saslPassword) {
+  console.error("Missing KAFKA_SASL_USERNAME or KAFKA_SASL_PASSWORD env vars");
+  process.exit(1);
+}
+
+console.log("Using broker:", KAFKA_BROKER, "topic:", KAFKA_TOPIC);
+
 const kafka = new Kafka({
   clientId: "stream-demo",
-  brokers: [broker],
+  brokers: [KAFKA_BROKER],
+  ssl: true,
+  sasl: {
+    mechanism: "plain",
+    username: saslUsername,
+    password: saslPassword,
+  },
 });
 
 const consumer = kafka.consumer({ groupId: "stream-demo-group" });
@@ -92,7 +104,6 @@ async function startKafka() {
 }
 
 // --------- HTTP ENDPOINT TO PRODUCE MESSAGES ----------
-// Students hit this via the frontend button
 app.post("/produce", async (req, res) => {
   try {
     const { text, user } = req.body || {};
