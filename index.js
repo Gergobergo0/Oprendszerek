@@ -16,7 +16,7 @@ if (!broker) {
 }
 
 // strip things like PLAINTEXT:// if present
-broker = broker.replace(/^[A-Z_]+:\/\//i, "");
+broker = broker.trim();
 
 console.log("Using broker:", broker, "topic:", KAFKA_TOPIC);
 
