@@ -35,7 +35,7 @@
     </style>
   </head>
   <body>
-    <h1>DB → Kafka → WebSocket demo</h1>
+    <h1>DB ->  Kafka -> WebSocket demo</h1>
     <div id="status">Connecting…</div>
     <div id="events"></div>
 
@@ -48,16 +48,16 @@
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
-        statusEl.textContent = "✅ Connected to WebSocket";
+        statusEl.textContent = "Connected to WebSocket";
       };
 
       ws.onclose = () => {
-        statusEl.textContent = "❌ Disconnected (refresh to retry)";
+        statusEl.textContent = "Disconnected (refresh to retry)";
       };
 
       ws.onerror = (err) => {
         console.error("WebSocket error", err);
-        statusEl.textContent = "⚠️ WebSocket error";
+        statusEl.textContent = "️WebSocket error";
       };
 
       ws.onmessage = (msg) => {
