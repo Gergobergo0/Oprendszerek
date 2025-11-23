@@ -2,62 +2,129 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Streaming demo</title>
+    <title>Kafka streaming demo</title>
     <style>
       body {
         font-family: system-ui, sans-serif;
         margin: 0;
         padding: 1rem;
-        background: #111;
-        color: #f5f5f5;
+        background: #0f172a;
+        color: #e5e7eb;
       }
       h1 {
-        margin-bottom: 0.5rem;
+        margin-bottom: 0.25rem;
       }
       #status {
         font-size: 0.9rem;
         margin-bottom: 1rem;
       }
+      #form {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+      }
+      #text {
+        flex: 1;
+        padding: 0.5rem 0.75rem;
+        border-radius: 6px;
+        border: 1px solid #334155;
+        background: #020617;
+        color: #e5e7eb;
+      }
+      button {
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        border: none;
+        background: #3b82f6;
+        color: white;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
       #events {
-        font-family: monospace;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
         white-space: pre-wrap;
-        background: #1e1e1e;
+        background: #020617;
         padding: 1rem;
         border-radius: 8px;
-        max-height: 80vh;
+        max-height: 70vh;
         overflow-y: auto;
+        border: 1px solid #1e293b;
       }
       .event {
-        border-bottom: 1px solid #333;
+        border-bottom: 1px solid #1e293b;
         padding-bottom: 0.75rem;
         margin-bottom: 0.75rem;
+      }
+      .event:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+        padding-bottom: 0;
+      }
+      .event-header {
+        font-size: 0.8rem;
+        color: #9ca3af;
+        margin-bottom: 0.25rem;
+      }
+      .chat-text {
+        font-size: 0.95rem;
+        margin-bottom: 0.25rem;
+      }
+      .pill {
+        display: inline-block;
+        padding: 0.1rem 0.4rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        background: #111827;
+        border: 1px solid #374151;
+        margin-left: 0.25rem;
       }
     </style>
   </head>
   <body>
-    <h1>DB ->  Kafka -> WebSocket demo</h1>
+    <h1>DB → Kafka → WebSocket (student demo)</h1>
     <div id="status">Connecting…</div>
+
+    <form id="form">
+      <input
+        id="text"
+        type="text"
+        placeholder="Type a message and send it through Kafka…"
+        autocomplete="off"
+      />
+      <button id="sendBtn" type="submit">Send</button>
+    </form>
+
     <div id="events"></div>
 
     <script>
       const statusEl = document.getElementById("status");
       const eventsEl = document.getElementById("events");
+      const formEl = document.getElementById("form");
+      const textEl = document.getElementById("text");
+      const sendBtn = document.getElementById("sendBtn");
 
+      // ----- WebSocket for streaming from Kafka -----
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsUrl = protocol + "//" + window.location.host + "/ws";
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
-        statusEl.textContent = "Connected to WebSocket";
+        statusEl.textContent = "Connected to WebSocket (Kafka consumer live)";
       };
 
       ws.onclose = () => {
-        statusEl.textContent = "Disconnected (refresh to retry)";
+        statusEl.textContent =
+          "Disconnected from WebSocket (refresh to reconnect)";
       };
 
       ws.onerror = (err) => {
         console.error("WebSocket error", err);
-        statusEl.textContent = "️WebSocket error";
+        statusEl.textContent = "WebSocket error (see console)";
       };
 
       ws.onmessage = (msg) => {
@@ -65,37 +132,80 @@
         try {
           data = JSON.parse(msg.data);
         } catch {
-          data = { raw: msg.data };
+          data = { value: { raw: msg.data } };
         }
 
-        // Expect Debezium-style { value: { before: {...}, after: {...} } }
+        // backend sends { topic, offset, value: payload }
         const v = data.value || {};
-        const before = v.before ?? null;
-        const after = v.after ?? null;
+        const isChat = v.type === "CHAT_MESSAGE";
 
         const container = document.createElement("div");
         container.className = "event";
 
         const header = document.createElement("div");
+        header.className = "event-header";
         header.textContent =
-          "Topic: " +
+          "topic: " +
           (data.topic || "(unknown)") +
-          " | offset " +
+          " • offset " +
           (data.offset || "?");
 
-        const body = document.createElement("pre");
-        body.textContent = JSON.stringify(
-          { before, after, raw: v },
-          null,
-          2
-        );
+        if (isChat) {
+          const line = document.createElement("div");
+          line.className = "chat-text";
+          line.textContent = v.user + ": " + v.text;
 
-        container.appendChild(header);
-        container.appendChild(body);
+          const meta = document.createElement("span");
+          meta.className = "pill";
+          meta.textContent = "type=CHAT_MESSAGE";
 
-        // prepend newest on top
+          line.appendChild(meta);
+          container.appendChild(header);
+          container.appendChild(line);
+
+          const raw = document.createElement("pre");
+          raw.textContent = JSON.stringify(v, null, 2);
+          raw.style.fontSize = "0.75rem";
+          raw.style.color = "#9ca3af";
+          container.appendChild(raw);
+        } else {
+          // generic event (e.g. Debezium before/after)
+          const body = document.createElement("pre");
+          body.textContent = JSON.stringify(v, null, 2);
+          container.appendChild(header);
+          container.appendChild(body);
+        }
+
+        // prepend newest
         eventsEl.insertBefore(container, eventsEl.firstChild);
       };
+
+      // ----- Form: send message into Kafka via backend -----
+      formEl.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const text = textEl.value.trim();
+        if (!text) return;
+
+        sendBtn.disabled = true;
+
+        try {
+          const res = await fetch("/produce", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text }),
+          });
+
+          if (!res.ok) {
+            console.error("Produce failed", await res.text());
+          } else {
+            textEl.value = "";
+          }
+        } catch (err) {
+          console.error("Error calling /produce", err);
+        } finally {
+          sendBtn.disabled = false;
+        }
+      });
     </script>
   </body>
 </html>
